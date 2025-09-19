@@ -1,38 +1,38 @@
-name: Build Overlay APK
-
-on:
-  push:
-  workflow_dispatch:
+name: Build Overlay
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    # Passo 1: Clona seu repositório para o ambiente de compilação
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        path: vendor/hardware/overlay
+      - uses: actions/checkout@v4
 
-    # Passo 2: Prepara as ferramentas de compilação do Android
-    - name: Set up build environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential git openjdk-11-jdk-headless python3.12
-        git clone https://android.googlesource.com/platform/prebuilts/build-tools --depth=1 prebuilts/build-tools
-        git clone https://android.googlesource.com/platform/build/soong --depth=1 build/soong
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          script: echo "sdk installed"
 
-    # Passo 3: Executa a compilação do seu módulo específico
-    - name: Build APK
-      run: |
-        cd vendor/hardware/overlay
-        source build/envsetup.sh
-        lunch aosp_arm64-eng
-        make treble-overlay-samsung-a155m -j$(nproc)
+      - name: Install build-tools
+        run: yes | sdkmanager "build-tools;34.0.0" "platforms;android-34"
 
-    # Passo 4: Salva o APK gerado como um "artefato" para download
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: overlay-apk
-        path: vendor/hardware/overlay/out/target/product/aosp_arm64/product/overlay/treble-overlay-samsung-a155m.apk
+      - name: Build overlay with aapt2
+        run: |
+          BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          PLAT="$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
+          mkdir -p out/flat
+          "$BT/aapt2" compile -o out/flat --dir res
+          "$BT/aapt2" link -o out/treble-overlay-samsung-a155m-unsigned.apk \
+            --manifest AndroidManifest.xml -I "$PLAT" out/flat/*.flata
+          "$BT/zipalign" -p -f 4 out/treble-overlay-samsung-a155m-unsigned.apk out/treble-overlay-samsung-a155m-aligned.apk
+          keytool -genkey -v -keystore debug.keystore -alias androiddebugkey \
+            -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          "$BT/apksigner" sign --ks debug.keystore --ks-pass pass:android out/treble-overlay-samsung-a155m-aligned.apk
+          mv out/treble-overlay-samsung-a155m-aligned.apk treble-overlay-samsung-a155m.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: treble-overlay-samsung-a155m
+          path: treble-overlay-samsung-a155m.apk
