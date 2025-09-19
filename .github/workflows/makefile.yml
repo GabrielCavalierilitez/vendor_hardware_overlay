@@ -1,0 +1,38 @@
+name: Build Overlay APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    # Passo 1: Clona seu repositório para o ambiente de compilação
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        path: vendor/hardware/overlay
+
+    # Passo 2: Prepara as ferramentas de compilação do Android
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git openjdk-11-jdk-headless python3.12
+        git clone https://android.googlesource.com/platform/prebuilts/build-tools --depth=1 prebuilts/build-tools
+        git clone https://android.googlesource.com/platform/build/soong --depth=1 build/soong
+
+    # Passo 3: Executa a compilação do seu módulo específico
+    - name: Build APK
+      run: |
+        cd vendor/hardware/overlay
+        source build/envsetup.sh
+        lunch aosp_arm64-eng
+        make treble-overlay-samsung-a155m -j$(nproc)
+
+    # Passo 4: Salva o APK gerado como um "artefato" para download
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: overlay-apk
+        path: vendor/hardware/overlay/out/target/product/aosp_arm64/product/overlay/treble-overlay-samsung-a155m.apk
